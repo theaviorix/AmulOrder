@@ -1,0 +1,101 @@
+rules_version = '2';
+
+// Notes on trade-offs, so future-you knows why a rule is looser than ideal:
+//
+// This app's client loads each collection as a WHOLE (one onSnapshot per
+// table, no where() clause — see src/lib/store.js) and filters down to
+// "just mine" in JavaScript. Firestore CANNOT allow that kind of unfiltered
+// listener when a rule depends on per-document fields (e.g.
+// "resource.data.supplier_user_id == request.auth.uid") — it has no way to
+// guarantee every possible result satisfies the rule, so it denies the
+// entire listener outright, not just the docs you shouldn't see. That's why
+// every collection below is readable by any signed-in user: it's required
+// for the app's current architecture to work at all, not an oversight.
+// Write access stays scoped to the actual owner/participant of each doc.
+//
+// If this app grows beyond a small trusted user base, the real fix is
+// switching store.js to per-user scoped queries (where() clauses matching
+// each rule) instead of whole-collection listeners, which would let these
+// rules be tightened back down to per-document ownership.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // profiles/{uid} — the doc id IS the user's own uid.
+    match /profiles/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn() && request.auth.uid == uid;
+      allow delete: if false; // deletion only via the deleteAccount Cloud Function
+    }
+
+    match /supplier_profiles/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow update: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /customer_profiles/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow update: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /supplier_links/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.customer_user_id == request.auth.uid;
+      allow update: if signedIn() &&
+        (resource.data.supplier_user_id == request.auth.uid || resource.data.customer_user_id == request.auth.uid);
+      allow delete: if false;
+    }
+
+    match /products/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.supplier_user_id == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.supplier_user_id == request.auth.uid;
+    }
+
+    match /orders/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.customer_user_id == request.auth.uid;
+      allow update: if signedIn() &&
+        (resource.data.supplier_user_id == request.auth.uid || resource.data.customer_user_id == request.auth.uid);
+      allow delete: if false;
+    }
+
+    match /bills/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.supplier_user_id == request.auth.uid;
+      allow update: if signedIn() &&
+        (resource.data.supplier_user_id == request.auth.uid || resource.data.customer_user_id == request.auth.uid);
+      allow delete: if false;
+    }
+
+    match /reviews/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.customer_user_id == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /notifications/{id} {
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if signedIn();
+    }
+
+    match /messages/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() &&
+        (request.resource.data.supplier_user_id == request.auth.uid || request.resource.data.customer_user_id == request.auth.uid);
+      allow update: if signedIn() &&
+        (resource.data.supplier_user_id == request.auth.uid || resource.data.customer_user_id == request.auth.uid);
+      allow delete: if false;
+    }
+  }
+}
