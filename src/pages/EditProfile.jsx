@@ -2,9 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '@/lib/AppSession';
 import { store } from '@/lib/store';
-import { functions } from '@/lib/firebaseClient';
-import { httpsCallable } from 'firebase/functions';
-import { signIn, updatePassword, signOut, getErrorMessage } from '@/lib/firebaseAuth';
+import { signIn, updatePassword, getErrorMessage, deleteMyAccount } from '@/lib/firebaseAuth';
 import { toast } from '@/components/ui/use-toast';
 import { compressImageFile } from '@/lib/exportUtils';
 import { ensureInviteCode } from '@/lib/inviteCode';
@@ -164,11 +162,8 @@ export default function EditProfile() {
     setDeleteError('');
     setDeleting(true);
     try {
-      const deleteAccountFn = httpsCallable(functions, 'deleteAccount');
-      const { data } = await deleteAccountFn();
-      if (data?.error) throw new Error(data.error);
+      await deleteMyAccount(table, profile?.id);
       toast({ title: 'Account deleted', description: 'Your account and data have been permanently removed.' });
-      await signOut();
       navigate('/', { replace: true });
     } catch (err) {
       setDeleteError(getErrorMessage(err, 'Could not delete your account. Please try again or contact support.'));

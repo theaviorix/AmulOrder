@@ -30,29 +30,26 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if signedIn() && request.auth.uid == uid;
       allow update: if signedIn() && request.auth.uid == uid;
-      allow delete: if false; // deletion only via the deleteAccount Cloud Function
+      allow delete: if signedIn() && request.auth.uid == uid; // lets a user delete their own account
     }
 
     match /supplier_profiles/{id} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow update: if signedIn() && resource.data.user_id == request.auth.uid;
-      allow delete: if false;
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
     }
 
     match /customer_profiles/{id} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow update: if signedIn() && resource.data.user_id == request.auth.uid;
-      allow delete: if false;
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
     }
 
     match /supplier_links/{id} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.customer_user_id == request.auth.uid;
-      allow update: if signedIn() &&
+      allow update, delete: if signedIn() &&
         (resource.data.supplier_user_id == request.auth.uid || resource.data.customer_user_id == request.auth.uid);
-      allow delete: if false;
     }
 
     match /products/{id} {
@@ -64,23 +61,23 @@ service cloud.firestore {
     match /orders/{id} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.customer_user_id == request.auth.uid;
-      allow update: if signedIn() &&
+      allow update, delete: if signedIn() &&
         (resource.data.supplier_user_id == request.auth.uid || resource.data.customer_user_id == request.auth.uid);
-      allow delete: if false;
     }
 
     match /bills/{id} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.supplier_user_id == request.auth.uid;
-      allow update: if signedIn() &&
+      allow update, delete: if signedIn() &&
         (resource.data.supplier_user_id == request.auth.uid || resource.data.customer_user_id == request.auth.uid);
-      allow delete: if false;
     }
 
     match /reviews/{id} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.customer_user_id == request.auth.uid;
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if signedIn() &&
+        (resource.data.supplier_user_id == request.auth.uid || resource.data.customer_user_id == request.auth.uid);
     }
 
     match /notifications/{id} {
@@ -93,9 +90,8 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if signedIn() &&
         (request.resource.data.supplier_user_id == request.auth.uid || request.resource.data.customer_user_id == request.auth.uid);
-      allow update: if signedIn() &&
+      allow update, delete: if signedIn() &&
         (resource.data.supplier_user_id == request.auth.uid || resource.data.customer_user_id == request.auth.uid);
-      allow delete: if false;
     }
   }
 }

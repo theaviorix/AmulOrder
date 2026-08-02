@@ -8,8 +8,9 @@ import {
   onAuthStateChanged,
   verifyPasswordResetCode,
   confirmPasswordReset,
+  deleteUser,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { auth, db } from './firebaseClient';
 import { store, waitUntilReady } from './store';
 
@@ -131,4 +132,58 @@ export async function getMyProfile(userId) {
 
 export async function setMyRole(userId, role) {
   await updateDoc(doc(db, 'profiles', userId), { role });
+}
+
+// --- Account deletion (entirely client-side, no Cloud Function needed) --
+// A signed-in user is always allowed to delete their OWN Firestore data
+// (security rules already permit that) and their OWN Auth account
+// (deleteUser only ever acts on auth.currentUser — there's no way to use
+// it to delete anyone else). That means this doesn't need the Admin SDK
+// or a paid Cloud Functions plan at all.
+async function deleteWhere(table, field, value) {
+  const snap = await getDocs(query(collection(db, table), where(field, '==', value)));
+  if (snap.empty) return;
+  const batch = writeBatch(db);
+  snap.docs.forEach((d) => batch.delete(d.ref));
+  await batch.commit();
+}
+
+export async function deleteMyAccount(roleTable, roleProfileId) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('No signed-in user.');
+  const uid = user.uid;
+
+  await Promise.all([
+    deleteWhere('bills', 'supplier_user_id', uid),
+    deleteWhere('bills', 'customer_user_id', uid),
+    deleteWhere('orders', 'supplier_user_id', uid),
+    deleteWhere('orders', 'customer_user_id', uid),
+    deleteWhere('notifications', 'user_id', uid),
+    deleteWhere('reviews', 'supplier_user_id', uid),
+    deleteWhere('reviews', 'customer_user_id', uid),
+    deleteWhere('products', 'supplier_user_id', uid),
+    deleteWhere('messages', 'supplier_user_id', uid),
+    deleteWhere('messages', 'customer_user_id', uid),
+    deleteWhere('supplier_links', 'supplier_user_id', uid),
+    deleteWhere('supplier_links', 'customer_user_id', uid),
+  ]);
+
+  if (roleTable && roleProfileId) {
+    await deleteDoc(doc(db, roleTable, roleProfileId));
+  }
+  await deleteDoc(doc(db, 'profiles', uid));
+
+  try {
+    await deleteUser(user);
+  } catch (err) {
+    if (err.code === 'auth/requires-recent-login') {
+      // Firebase requires a fresh login (within the last few minutes) to
+      // delete the auth account itself, as a safety measure. All the
+      // user's DATA is already gone at this point — just the login
+      // credential remains, so this isn't a partial/broken state, just an
+      // extra confirmation step.
+      throw new Error('For security, please log out and log back in, then try deleting your account again.');
+    }
+    throw err;
+  }
 }
