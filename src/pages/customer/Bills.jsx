@@ -79,6 +79,9 @@ export default function CustomerBills() {
         <p className="text-xs uppercase tracking-widest text-surface/60">Outstanding balance</p>
         <p className="mt-1 font-display font-bold text-4xl">{inr(outstanding)}</p>
         <p className="mt-2 text-sm text-surface/60">{allBills.length} bill{allBills.length === 1 ? '' : 's'} · {allBills.filter((b) => b.status === 'paid').length} settled</p>
+        {(myProfile?.advance_balance || 0) > 0 && (
+          <p className="mt-3 text-sm text-ok">Advance on file: {inr(myProfile.advance_balance)} — mention this to your supplier next time you&apos;re billed.</p>
+        )}
       </div>
 
       <section>

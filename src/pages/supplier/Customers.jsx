@@ -60,6 +60,7 @@ export default function SupplierCustomers() {
   const notOrderedToday = active.filter((l) => !orderedTodayIds.has(l.customer_user_id));
 
   const balanceOf = (cid) => bills.filter((b) => b.customer_user_id === cid && b.status !== 'paid').reduce((s, b) => s + (b.total - b.paid_amount), 0);
+  const advanceOf = (profileId) => store.get('customer_profiles', profileId)?.advance_balance || 0;
   const setLink = async (l, status) => {
     const updated = store.update('supplier_links', l.id, { status });
     if (updated) {
@@ -155,7 +156,7 @@ export default function SupplierCustomers() {
           ) : (
             <div className="rounded-2xl border border-mist bg-surface overflow-hidden divide-y divide-mist/50">
               {notOrderedToday.map((l) => (
-                <CustomerRow key={l.id} l={l} avatar={avatarFor(l)} balance={balanceOf(l.customer_user_id)} onNudge={() => setNudge(l)} />
+                <CustomerRow key={l.id} l={l} avatar={avatarFor(l)} balance={balanceOf(l.customer_user_id)} advance={advanceOf(l.customer_profile_id)} onNudge={() => setNudge(l)} />
               ))}
             </div>
           )}
@@ -171,7 +172,7 @@ export default function SupplierCustomers() {
         ) : (
           <div className="rounded-2xl border border-mist bg-surface overflow-hidden divide-y divide-mist/50">
             {orderedToday.map((l) => (
-              <CustomerRow key={l.id} l={l} avatar={avatarFor(l)} balance={balanceOf(l.customer_user_id)} onNudge={() => setNudge(l)} />
+              <CustomerRow key={l.id} l={l} avatar={avatarFor(l)} balance={balanceOf(l.customer_user_id)} advance={advanceOf(l.customer_profile_id)} onNudge={() => setNudge(l)} />
             ))}
           </div>
         )}
@@ -220,14 +221,17 @@ export default function SupplierCustomers() {
   );
 }
 
-function CustomerRow({ l, avatar, balance, onNudge }) {
+function CustomerRow({ l, avatar, balance, advance, onNudge }) {
   return (
     <div className="flex items-center justify-between px-4 py-3 gap-3">
       <Link to={`/supplier/customers/${l.id}`} className="flex items-center gap-3 min-w-0 group">
         <Avatar src={avatar} name={l.customer_name} size="sm" />
         <div className="min-w-0">
           <p className="text-sm font-medium text-ink truncate group-hover:underline">{l.customer_name}</p>
-          <p className="text-xs text-ink2">Outstanding <span className="font-mono text-ink">{inr(balance)}</span></p>
+          <p className="text-xs text-ink2">
+            Outstanding <span className="font-mono text-ink">{inr(balance)}</span>
+            {advance > 0 && <span className="ml-2 text-ok">· Advance {inr(advance)}</span>}
+          </p>
         </div>
       </Link>
       <div className="flex items-center gap-2 shrink-0">

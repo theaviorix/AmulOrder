@@ -24,7 +24,7 @@ function Field({ label, value, onChange, placeholder, type = 'text', required })
 
 export default function Onboarding() {
   const navigate = useNavigate();
-  const { session, refreshSession } = useSession();
+  const { session, loading, refreshSession } = useSession();
   const [searchParams] = useSearchParams();
   const roleParam = searchParams.get('role');
   // Role is chosen and locked in at signup time now (see Register.jsx) — by
@@ -49,6 +49,14 @@ export default function Onboarding() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-canvas grid place-items-center px-5">
+        <Loader2 className="w-6 h-6 animate-spin text-ink2" />
+      </div>
+    );
+  }
 
   if (!session) {
     return (

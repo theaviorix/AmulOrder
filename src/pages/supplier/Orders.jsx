@@ -23,6 +23,7 @@ export default function SupplierOrders() {
   const [addProductId, setAddProductId] = useState('');
   const [reason, setReason] = useState('');
   const [dispatchListOpen, setDispatchListOpen] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
   const products = store.filter('products', (p) => p.supplier_user_id === uid);
 
   const all = store.filter('orders', (o) => o.supplier_user_id === uid)
@@ -32,6 +33,32 @@ export default function SupplierOrders() {
 
   const acceptedInView = orders.filter((o) => o.status === 'accepted');
   const dispatchedInView = orders.filter((o) => o.status === 'dispatched');
+  const placedInView = orders.filter((o) => o.status === 'placed');
+
+  const toggleSelect = (id) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const clearSelection = () => setSelected(new Set());
+  const selectedOrders = orders.filter((o) => selected.has(o.id));
+
+  // Accepts an order exactly as placed, no modal — for one-tap / bulk accept.
+  // Quantities can still be adjusted afterward via the per-order Edit
+  // action, which updates the order (and bill, if already generated) in place.
+  const quickAccept = (order) => {
+    store.update('orders', order.id, { status: 'accepted', edit_requested: false, edit_request_note: null });
+    notify(order.customer_user_id, 'order_accepted', 'Your order was accepted.', '/customer/orders');
+  };
+  const acceptAll = () => { placedInView.forEach(quickAccept); };
+  const acceptSelected = () => { selectedOrders.filter((o) => o.status === 'placed').forEach(quickAccept); clearSelection(); };
+  const dispatchOne = (order) => {
+    store.update('orders', order.id, { status: 'dispatched' });
+    notify(order.customer_user_id, 'order_dispatched', `Your order has been dispatched (${order.slot} round).`, '/customer/orders');
+  };
+  const dispatchSelected = () => { selectedOrders.filter((o) => o.status === 'accepted').forEach(dispatchOne); clearSelection(); };
+  const billOne = (order) => {
+    const bill = store.create('bills', { order_id: order.id, supplier_user_id: uid, customer_user_id: order.customer_user_id, customer_name: order.customer_name, total: order.total, paid_amount: 0, status: 'unpaid', payments: [], edited_flag: false });
+    store.update('orders', order.id, { status: 'billed', bill_id: bill.id });
+    notify(order.customer_user_id, 'order_billed', `A bill of ${inr(order.total)} has been generated.`, '/customer/bills');
+  };
+  const billSelected = () => { selectedOrders.filter((o) => o.status === 'dispatched').forEach(billOne); clearSelection(); };
 
   const openAccept = (order, type) => {
     const q = {};
@@ -88,16 +115,6 @@ export default function SupplierOrders() {
     setModal(null);
   };
 
-  const dispatch = (order) => {
-    store.update('orders', order.id, { status: 'dispatched' });
-    notify(order.customer_user_id, 'order_dispatched', `Your order has been dispatched (${order.slot} round).`, '/customer/orders');
-  };
-  const generateBill = (order) => {
-    const bill = store.create('bills', { order_id: order.id, supplier_user_id: uid, customer_user_id: order.customer_user_id, customer_name: order.customer_name, total: order.total, paid_amount: 0, status: 'unpaid', payments: [], edited_flag: false });
-    store.update('orders', order.id, { status: 'billed', bill_id: bill.id });
-    notify(order.customer_user_id, 'order_billed', `A bill of ${inr(order.total)} has been generated.`, '/customer/bills');
-  };
-
   const dispatchAll = () => {
     acceptedInView.forEach((o) => {
       store.update('orders', o.id, { status: 'dispatched' });
@@ -141,6 +158,11 @@ export default function SupplierOrders() {
           <button onClick={() => setDispatchListOpen(true)} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-mist text-ink hover:bg-canvas transition-colors">
             <Boxes size={14} /> Dispatch list
           </button>
+          {placedInView.length > 0 && (
+            <button onClick={acceptAll} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-jet text-surface hover:bg-ink transition-colors">
+              <Check size={14} /> Accept all ({placedInView.length})
+            </button>
+          )}
           {acceptedInView.length > 0 && (
             <button onClick={dispatchAll} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-jet text-surface hover:bg-ink transition-colors">
               <Zap size={14} /> Dispatch all ({acceptedInView.length})
@@ -154,18 +176,42 @@ export default function SupplierOrders() {
         </div>
       </div>
 
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-canvas border border-mist px-3.5 py-2.5">
+          <span className="text-xs font-medium text-ink2 mr-1">{selected.size} selected</span>
+          {selectedOrders.some((o) => o.status === 'placed') && (
+            <button onClick={acceptSelected} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-jet text-surface hover:bg-ink transition-colors">
+              <Check size={13} /> Accept selected
+            </button>
+          )}
+          {selectedOrders.some((o) => o.status === 'accepted') && (
+            <button onClick={dispatchSelected} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-jet text-surface hover:bg-ink transition-colors">
+              <Truck size={13} /> Dispatch selected
+            </button>
+          )}
+          {selectedOrders.some((o) => o.status === 'dispatched') && (
+            <button onClick={billSelected} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-jet text-surface hover:bg-ink transition-colors">
+              <ScrollText size={13} /> Generate bills for selected
+            </button>
+          )}
+          <button onClick={clearSelection} className="text-xs font-medium px-3 py-1.5 rounded-lg text-ink2 hover:text-ink">Clear</button>
+        </div>
+      )}
+
       {orders.length === 0 ? (
         <EmptyState icon={ClipboardList} title="No orders here" hint="Orders placed by your retailers will show up in real time." />
       ) : (
         <div className="grid gap-3">
           {orders.map((o) => (
             <OrderCard key={o.id} o={o}
+              checked={selected.has(o.id)}
+              onToggleSelect={() => toggleSelect(o.id)}
               onAccept={() => openAccept(o, 'accept')}
               onEdit={() => openAccept(o, 'edit')}
               onReject={() => openReject(o)}
               onCancel={() => openCancel(o)}
-              onDispatch={() => dispatch(o)}
-              onBill={() => generateBill(o)}
+              onDispatch={() => dispatchOne(o)}
+              onBill={() => billOne(o)}
             />
           ))}
         </div>
@@ -264,11 +310,18 @@ export default function SupplierOrders() {
   );
 }
 
-function OrderCard({ o, onAccept, onEdit, onReject, onCancel, onDispatch, onBill }) {
+function OrderCard({ o, checked, onToggleSelect, onAccept, onEdit, onReject, onCancel, onDispatch, onBill }) {
   const time = new Date(o.created_date).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
   const cancellable = ['placed', 'accepted', 'dispatched'].includes(o.status);
+  const selectable = ['placed', 'accepted', 'dispatched'].includes(o.status);
   return (
-    <div className={`rounded-2xl border bg-surface p-4 ${o.status === 'placed' ? 'border-warn/40 ring-1 ring-warn/20' : o.edit_requested ? 'border-warn/40' : 'border-mist'}`}>
+    <div className={`rounded-2xl border bg-surface p-4 flex gap-3 ${o.status === 'placed' ? 'border-warn/40 ring-1 ring-warn/20' : o.edit_requested ? 'border-warn/40' : 'border-mist'}`}>
+      {selectable && (
+        <label className="pt-0.5 shrink-0 cursor-pointer">
+          <input type="checkbox" checked={checked} onChange={onToggleSelect} className="w-[18px] h-[18px] rounded border-mist accent-jet cursor-pointer" />
+        </label>
+      )}
+      <div className="flex-1 min-w-0">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${o.slot === 'AM' ? 'bg-mist text-ink2' : 'bg-jet text-surface'}`}>{o.slot}</span>
@@ -296,6 +349,7 @@ function OrderCard({ o, onAccept, onEdit, onReject, onCancel, onDispatch, onBill
       <div className="mt-3 flex items-center justify-between gap-2">
         <span className="font-mono font-semibold text-ink">{inr(o.total)}</span>
         <Actions o={o} cancellable={cancellable} onAccept={onAccept} onEdit={onEdit} onReject={onReject} onCancel={onCancel} onDispatch={onDispatch} onBill={onBill} />
+      </div>
       </div>
     </div>
   );

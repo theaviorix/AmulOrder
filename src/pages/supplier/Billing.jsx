@@ -38,11 +38,27 @@ export default function SupplierBilling() {
     const amt = Number(amount);
     if (!amt || amt <= 0) return;
     const bill = pay;
+    const due = bill.total - bill.paid_amount;
+    const overpaid = Math.max(0, amt - due); // anything beyond what was actually owed
     const newPaid = Math.min(bill.total, bill.paid_amount + amt);
     const status = newPaid >= bill.total ? 'paid' : 'partial';
     const payments = [...(bill.payments || []), { amount: amt, date: new Date().toISOString() }];
     store.update('bills', bill.id, { paid_amount: newPaid, status, payments });
-    notify(bill.customer_user_id, 'payment_recorded', `${inr(amt)} recorded against your bill.${status === 'paid' ? ' Bill settled!' : ''}`, '/customer/bills');
+
+    if (overpaid > 0) {
+      const custProfile = store.find('customer_profiles', (c) => c.user_id === bill.customer_user_id);
+      if (custProfile) {
+        const newAdvance = (custProfile.advance_balance || 0) + overpaid;
+        store.update('customer_profiles', custProfile.id, { advance_balance: newAdvance });
+      }
+    }
+
+    notify(
+      bill.customer_user_id,
+      'payment_recorded',
+      `${inr(amt)} recorded against your bill.${status === 'paid' ? ' Bill settled!' : ''}${overpaid > 0 ? ` ${inr(overpaid)} added to your advance balance.` : ''}`,
+      '/customer/bills'
+    );
     setPay(null); setAmount('');
   };
 
