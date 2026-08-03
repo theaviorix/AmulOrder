@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Store, ShoppingCart, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
 import { useSession } from '@/lib/AppSession';
-import { store } from '@/lib/store';
+import { store, waitUntilReady } from '@/lib/store';
 import { setMyRole, getErrorMessage } from '@/lib/firebaseAuth';
 import { generateFreeInviteCode } from '@/lib/inviteCode';
 import Logo from '@/components/Logo';
@@ -113,6 +113,11 @@ export default function Onboarding() {
     setError('');
     setSaving(true);
     try {
+      // Wait for the supplier_profiles collection's first Firestore
+      // snapshot before trusting a "not found" — otherwise a fast click
+      // right after page load can check an still-empty cache and wrongly
+      // report a valid code as invalid.
+      await Promise.race([waitUntilReady('supplier_profiles'), new Promise((r) => setTimeout(r, 6000))]);
       const sup = store.find('supplier_profiles', (s) => s.invite_code === code);
       if (!sup) { setError('Invalid invite code. Check with your supplier.'); setSaving(false); return; }
 
